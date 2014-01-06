@@ -54,8 +54,11 @@ public class EyeIntention extends Activity implements CvCameraViewListener2 {
 
 	private File mCascadeFile;
 	private CascadeClassifier mFaceDetector;
-		
+	private CascadeClassifier mEyeDetector;
 	
+	private int learn_frames = 0;
+	private Mat templateR;
+	private Mat templateL;
 	private float mRelFaceSize = 0.2f;
 	private int mAbsFaceSize = 0;
 
@@ -88,11 +91,29 @@ public class EyeIntention extends Activity implements CvCameraViewListener2 {
 					}
 					is.close();
 					os.close();
+					
+					InputStream iser = getResources().openRawResource(
+							R.raw.haarcascade_lefteye_2splits);
+					File RightEyecascadeDir = getDir("RightEyecascade",
+							Context.MODE_PRIVATE);
+					File right_eye_cascadeFile = new File(RightEyecascadeDir,
+							"haarcascade_eye_right.xml");
+					FileOutputStream oser = new FileOutputStream(right_eye_cascadeFile);
 
+					byte[] bufferER = new byte[4096];
+					int bytesReadER;
+					while ((bytesReadER = iser.read(bufferER)) != -1) {
+						oser.write(bufferER, 0, bytesReadER);
+					}
+					iser.close();
+					oser.close();
+
+					
 					mFaceDetector = new CascadeClassifier(
 								mCascadeFile.getAbsolutePath());
 
-
+					mEyeDetector = new CascadeClassifier(
+							right_eye_cascadeFile.getAbsolutePath());
 					cascadeDir.delete();
 
 				} catch (IOException e) {
@@ -187,9 +208,103 @@ public class EyeIntention extends Activity implements CvCameraViewListener2 {
 			Point center = new Point(xCenter, yCenter);
 
 			Core.circle(mRgba, center, 10, new Scalar(255, 0, 0, 255), 3);
+			
+			Rect r = facesArray[i];
+			
+			Rect righteyearea= new Rect(r.x + r.width / 16,
+					(int) (r.y + (r.height / 4.5)),
+					(r.width - 2 * r.width / 16) / 2, (int) (r.height / 3.0));
+			Rect lefteyearea = new Rect(r.x + r.width / 16
+					+ (r.width - 2 * r.width / 16) / 2,
+					(int) (r.y + (r.height / 4.5)),
+					(r.width - 2 * r.width / 16) / 2, (int) (r.height / 3.0));
 
+			Core.rectangle(mRgba, lefteyearea.tl(), lefteyearea.br(),
+					new Scalar(255, 0, 0, 255), 2);
+			Core.rectangle(mRgba, righteyearea.tl(), righteyearea.br(),
+					new Scalar(255, 0, 0, 255), 2);
+
+			if (learn_frames < 5) {
+				templateR = get_template(mEyeDetector, righteyearea, 24);
+				templateL = get_template(mEyeDetector, lefteyearea, 24);
+				learn_frames++;
+			} else {
+				 match_eye(righteyearea, templateR); 
+				 match_eye(lefteyearea, templateL); 
+				
+			}
 		}
+
+		
+		
 		return mRgba;
+	}
+
+	private Mat get_template(CascadeClassifier clasificator, Rect area, int size) {
+		Mat template = new Mat();
+		Mat mROI = mGray.submat(area);
+		MatOfRect eyes = new MatOfRect();
+		Point iris = new Point();
+		Rect eye_template = new Rect();
+		clasificator.detectMultiScale(mROI, eyes, 1.15, 2,
+				Objdetect.CASCADE_FIND_BIGGEST_OBJECT
+						| Objdetect.CASCADE_SCALE_IMAGE, new Size(30, 30),
+				new Size());
+
+		Rect[] eyesArray = eyes.toArray();
+		for (int i = 0; i < eyesArray.length;) {
+			Rect e = eyesArray[i];
+			e.x = area.x + e.x;
+			e.y = area.y + e.y;
+			Rect eye_rect = new Rect((int) e.tl().x,
+					(int) (e.tl().y + e.height * 0.4), (int) e.width,
+					(int) (e.height * 0.6));
+			mROI = mGray.submat(eye_rect);
+			Mat vyrez = mRgba.submat(eye_rect);
+			
+			
+			Core.MinMaxLocResult mmG = Core.minMaxLoc(mROI);
+
+			Core.circle(vyrez, mmG.minLoc, 2, new Scalar(255, 255, 255, 255), 2);
+			iris.x = mmG.minLoc.x + eye_rect.x;
+			iris.y = mmG.minLoc.y + eye_rect.y;
+			eye_template = new Rect((int) iris.x - size / 2, (int) iris.y
+					- size / 2, size, size);
+			Core.rectangle(mRgba, eye_template.tl(), eye_template.br(),
+					new Scalar(255, 0, 0, 255), 2);
+			template = (mGray.submat(eye_template)).clone();
+			return template;
+		}
+		return template;
+	}
+
+	private void match_eye(Rect area, Mat mTemplate) {
+		Point matchLoc;
+		Mat mROI = mGray.submat(area);
+		int result_cols = mROI.cols() - mTemplate.cols() + 1;
+		int result_rows = mROI.rows() - mTemplate.rows() + 1;
+		// Check for bad template size
+		if (mTemplate.cols() == 0 || mTemplate.rows() == 0) {
+			return ;
+		}
+		Mat mResult = new Mat(result_cols, result_rows, CvType.CV_8U);
+
+		//int type = Imgproc.TM_SQDIFF; // Imgproc.TM_SQDIFF_NORMED //Imgproc.TM_CCORR_NORMED);
+		Imgproc.matchTemplate(mROI, mTemplate, mResult, Imgproc.TM_CCORR_NORMED);
+			
+					
+		Core.MinMaxLocResult mmres = Core.minMaxLoc(mResult);
+
+		//matchLoc = mmres.minLoc;
+		matchLoc = mmres.maxLoc;
+
+		Point matchLoc_tx = new Point(matchLoc.x + area.x, matchLoc.y + area.y);
+		Point matchLoc_ty = new Point(matchLoc.x + mTemplate.cols() + area.x,
+				matchLoc.y + mTemplate.rows() + area.y);
+
+		Core.rectangle(mRgba, matchLoc_tx, matchLoc_ty, new Scalar(255, 255, 0,
+				255));
+
 	}
 
 }
