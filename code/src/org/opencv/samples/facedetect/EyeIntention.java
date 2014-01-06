@@ -31,6 +31,7 @@ import org.opencv.objdetect.CascadeClassifier;
 import org.opencv.objdetect.Objdetect;
 import org.opencv.video.Video;
 
+import android.R.bool;
 import android.app.Activity;
 import android.content.Context;
 import android.os.Bundle;
@@ -45,8 +46,7 @@ import android.widget.SeekBar.OnSeekBarChangeListener;
 
 public class EyeIntention extends Activity implements CvCameraViewListener2 {
 
-	private static final String TAG = "Eye-Intention::Activity";
-	
+	private static final String TAG = "Eye-Intention";
 	private static final Scalar FACE_RECT_COLOR = new Scalar(255, 0, 0, 255);
 	
 
@@ -68,7 +68,17 @@ public class EyeIntention extends Activity implements CvCameraViewListener2 {
 
 	double xCenter = -1;
 	double yCenter = -1;
-
+	
+	Point lastPointL= new Point(-1,-1),lastPointR=new Point(-1,-1);
+	Point tPointL,tPointR;
+	Point lastGrid, tGrid;
+	double xThresh =5;
+	double yThresh =3;
+	int tMod =15;
+	int countMod=256;
+	int count=0;
+//	bool isLeft; 
+	
 	private BaseLoaderCallback mLoaderCallback = new BaseLoaderCallback(this) {
 		@Override
 		public void onManagerConnected(int status) {
@@ -200,16 +210,26 @@ public class EyeIntention extends Activity implements CvCameraViewListener2 {
 					2, new Size(mAbsFaceSize, mAbsFaceSize),
 					new Size());
 		
+		
 		Rect[] facesArray = faces.toArray();
+		//count=0;
+		lastGrid =new Point(1,2); 
+				
 		for (int i = 0; i < facesArray.length; i++) {
 			learn_frames =0;
-//			Core.rectangle(mRgba, facesArray[i].tl(), facesArray[i].br(),
-//					FACE_RECT_COLOR, 3);
+			
+			Core.rectangle(mRgba, facesArray[i].tl(), facesArray[i].br(),
+					FACE_RECT_COLOR, 3);
 			xCenter = (facesArray[i].x + facesArray[i].width + facesArray[i].x) / 2;
 			yCenter = (facesArray[i].y + facesArray[i].y + facesArray[i].height) / 2;
 			Point center = new Point(xCenter, yCenter);
 
-//			Core.circle(mRgba, center, 10, new Scalar(255, 0, 0, 255), 3);
+			
+			Core.circle(mRgba, center, 10, new Scalar(255, 0, 0, 255), 3);
+			Core.putText(mRgba, "[" + center.x + "," + center.y + "]",
+					new Point(center.x + 20, center.y + 20),
+					Core.FONT_HERSHEY_SIMPLEX, 0.7, new Scalar(255, 255, 255,
+							255));
 			
 			Rect r = facesArray[i];
 			
@@ -220,29 +240,68 @@ public class EyeIntention extends Activity implements CvCameraViewListener2 {
 					+ (r.width - 2 * r.width / 16) / 2,
 					(int) (r.y + (r.height / 4.5)),
 					(r.width - 2 * r.width / 16) / 2, (int) (r.height / 3.0));
-
+			
+			Log.i(TAG, "Green eyes ..");
 			Core.rectangle(mRgba, lefteyearea.tl(), lefteyearea.br(),
 					new Scalar(0, 255, 0, 255), 2);
 			Core.rectangle(mRgba, righteyearea.tl(), righteyearea.br(),
 					new Scalar(0, 255, 0, 255), 2);
-
+			
+			Log.i(TAG, "Check1 + count: "+count);
 			if (learn_frames < 5) {
-				templateR = get_template(mEyeDetector, righteyearea, 24);
-				templateL = get_template(mEyeDetector, lefteyearea, 24);
+				Log.i(TAG, "learn_frames: "+learn_frames);
+				templateR = get_template(mEyeDetector, righteyearea, 24, false);
+				templateL = get_template(mEyeDetector, lefteyearea, 24,true);
 				learn_frames++;
-			} else {
-				 match_eye(righteyearea, templateR); 
-				 match_eye(lefteyearea, templateL); 
+			} else {				
+				tPointR = match_eye(righteyearea, templateR);
+				tPointL = match_eye(lefteyearea, templateL);
+			}
+			
+			count++;
+			count = count%countMod;
+			if(count%tMod==0){		
+				// Grid = >Point grid;
+				// 	1 2 3
+				// 4 5 6
+				//
+				if(tPointR.x -lastPointR.x >xThresh){
+					lastGrid.x = lastGrid.x+1;
+					if(lastGrid.x>3){
+						lastGrid.x = 3;
+					}
+				}else if(tPointR.x - lastPointR.x > - xThresh){
+					lastGrid.x = lastGrid.x-1;
+					if(lastGrid.x<1){
+						lastGrid.x = 1;
+					}
+				}
+				
+				if(tPointR.y-lastPointR.y >yThresh){
+					lastGrid.y = lastGrid.y+1;
+					if(lastGrid.y>2){
+						lastGrid.y = 2;
+					}
+				}else if(tPointR.y - lastPointR.y < - yThresh){
+					lastGrid.y = lastGrid.y-1;
+					if(lastGrid.y<1){
+						lastGrid.y = 1;
+					}
+				}
+				
+				lastPointR = tPointR;
+				lastPointL = tPointL;
+				Log.e(TAG,"The lastpointR : "+lastPointR.x +" "+lastPointR.y);
+				Log.e(TAG,"The lastpointL : "+lastPointL.x +" "+lastPointL.y);
+				Log.e(TAG,"The Grid info: "+lastGrid.x +" "+lastGrid.y);
 				
 			}
 		}
 
-		
-		
 		return mRgba;
 	}
 
-	private Mat get_template(CascadeClassifier clasificator, Rect area, int size) {
+	private Mat get_template(CascadeClassifier clasificator, Rect area, int size, boolean isLeft) {
 		Mat template = new Mat();
 		Mat mROI = mGray.submat(area);
 		MatOfRect eyes = new MatOfRect();
@@ -266,12 +325,25 @@ public class EyeIntention extends Activity implements CvCameraViewListener2 {
 			
 			
 			Core.MinMaxLocResult mmG = Core.minMaxLoc(mROI);
-
+			Log.i(TAG,"White Circle =>Pupil");
+			
 			Core.circle(vyrez, mmG.minLoc, 2, new Scalar(255, 255, 255, 255), 2);
+			
 			iris.x = mmG.minLoc.x + eye_rect.x;
 			iris.y = mmG.minLoc.y + eye_rect.y;
 			eye_template = new Rect((int) iris.x - size / 2, (int) iris.y
 					- size / 2, size, size);
+			
+			if(isLeft){
+				tPointL = mmG.minLoc;				
+			}else{
+				tPointR = mmG.minLoc;
+			}
+			
+			Log.i(TAG, "mmG.minLoc = "+mmG.minLoc.x +" "+mmG.minLoc.y);
+			
+			
+			Log.i(TAG,"Red Rectangale =><Eye>");
 			Core.rectangle(mRgba, eye_template.tl(), eye_template.br(),
 					new Scalar(255, 0, 0, 255), 2);
 			template = (mGray.submat(eye_template)).clone();
@@ -280,14 +352,14 @@ public class EyeIntention extends Activity implements CvCameraViewListener2 {
 		return template;
 	}
 
-	private void match_eye(Rect area, Mat mTemplate) {
+	private Point match_eye(Rect area, Mat mTemplate) {
 		Point matchLoc;
 		Mat mROI = mGray.submat(area);
 		int result_cols = mROI.cols() - mTemplate.cols() + 1;
 		int result_rows = mROI.rows() - mTemplate.rows() + 1;
 		// Check for bad template size
 		if (mTemplate.cols() == 0 || mTemplate.rows() == 0) {
-			return ;
+			return new Point(0,0);
 		}
 		Mat mResult = new Mat(result_cols, result_rows, CvType.CV_8U);
 
@@ -299,14 +371,16 @@ public class EyeIntention extends Activity implements CvCameraViewListener2 {
 
 		//matchLoc = mmres.minLoc;
 		matchLoc = mmres.maxLoc;
-
+		Log.i(TAG, "matLoc = "+matchLoc.x +" "+matchLoc.y);
 		Point matchLoc_tx = new Point(matchLoc.x + area.x, matchLoc.y + area.y);
 		Point matchLoc_ty = new Point(matchLoc.x + mTemplate.cols() + area.x,
 				matchLoc.y + mTemplate.rows() + area.y);
-
+		
+		
+		
 		Core.rectangle(mRgba, matchLoc_tx, matchLoc_ty, new Scalar(255, 255, 0,
 				255));
-
+		return matchLoc;
 	}
 
 }
