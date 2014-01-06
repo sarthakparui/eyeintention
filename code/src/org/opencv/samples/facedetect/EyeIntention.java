@@ -73,10 +73,11 @@ public class EyeIntention extends Activity implements CvCameraViewListener2 {
 	Point tPointL =new Point(-2,-2) ,tPointR = new Point(-2,-2);
 	Point lastGridR = new Point(1,2),lastGridL=new Point(1,2);
 	double xThresh =5;
-	double yThresh =3;
-	int tMod =15;
+	double yThresh =7;
+	int tMod =1;
 	int countMod=256;
 	int count=0;
+	double decay =0.1;
 //	bool isLeft; 
 	
 	private BaseLoaderCallback mLoaderCallback = new BaseLoaderCallback(this) {
@@ -225,11 +226,11 @@ public class EyeIntention extends Activity implements CvCameraViewListener2 {
 			Point center = new Point(xCenter, yCenter);
 
 			
-			Core.circle(mRgba, center, 10, new Scalar(255, 0, 0, 255), 3);
-			/*Core.putText(mRgba, "[" + center.x + "," + center.y + "]",
-					new Point(center.x + 20, center.y + 20),
-					Core.FONT_HERSHEY_SIMPLEX, 0.7, new Scalar(255, 255, 255,
-							255));*/
+//			Core.circle(mRgba, center, 10, new Scalar(255, 0, 0, 255), 3);
+//			Core.putText(mRgba, "[" + center.x + "," + center.y + "]",
+//					new Point(center.x + 20, center.y + 20),
+//					Core.FONT_HERSHEY_SIMPLEX, 0.7, new Scalar(255, 255, 255,
+//							255));
 			
 			Rect r = facesArray[i];
 			
@@ -241,43 +242,52 @@ public class EyeIntention extends Activity implements CvCameraViewListener2 {
 					(int) (r.y + (r.height / 4.5)),
 					(r.width - 2 * r.width / 16) / 2, (int) (r.height / 3.0));
 			
-			Log.i(TAG, "Green eyes ..");
+			Log.d(TAG, "Green eyes ..");
 			Core.rectangle(mRgba, lefteyearea.tl(), lefteyearea.br(),
 					new Scalar(0, 255, 0, 255), 2);
 			Core.rectangle(mRgba, righteyearea.tl(), righteyearea.br(),
 					new Scalar(0, 255, 0, 255), 2);
 			
-			//Log.i(TAG, " count: "+count);
 			if (learn_frames < 5) {
-				//Log.i(TAG, "learn_frames: "+learn_frames);
+				//Log.d(TAG, "learn_frames: "+learn_frames);
 				//Set tPointR and tPointL inside 
 				templateR = get_template(mEyeDetector, righteyearea, 24, false);
 				templateL = get_template(mEyeDetector, lefteyearea, 24,true);
 				learn_frames++;
 			} else {				
-				Log.i(TAG, "ELSE : learn_frames: "+learn_frames);
+				Log.d(TAG, "ELSE : learn_frames: "+learn_frames);
 				match_eye(righteyearea, templateR,false);
 				match_eye(lefteyearea, templateL,true);
 			}
 			
-			Log.e(TAG," count: "+count+"; The tpointR : "+tPointR.x +" "+tPointR.y);
-			Log.e(TAG," count: "+count+"; The tpointL : "+tPointL.x +" "+tPointL.y);
+			Log.i(TAG, " count: "+count);
+//			Log.i(TAG," The tpointR : "+tPointR.x +" "+tPointR.y);
+			Log.i(TAG," The tpointL : "+tPointL.x +" "+tPointL.y);
 			
 			count++;
 			count = count%countMod;
-			if(count%tMod==0){
+			//Comment123
+			if(count%tMod==tMod-1){
 				lastGridR = get_Gridlocation(false);
 				lastGridL = get_Gridlocation(true);
-				
-				lastPointR = tPointR;
-				lastPointL = tPointL;
-				
-				Log.e(TAG,"The lastpointR : "+lastPointR.x +" "+lastPointR.y);
-				Log.e(TAG,"The lastpointL : "+lastPointL.x +" "+lastPointL.y);
-				Log.e(TAG,"The GridR info: "+lastGridR.x +" "+lastGridR.y);
-				Log.e(TAG,"The GridL info: "+lastGridL.x +" "+lastGridL.y);
-				
+
+//				Log.i(TAG,"The GridR info: "+lastGridR.x +" "+lastGridR.y);
+				Log.i(TAG,"The GridL info: "+lastGridL.x +" "+lastGridL.y);
 			}
+				lastPointR.x = (1-decay)*lastPointR.x + decay*tPointR.x;
+				lastPointR.y = (1-decay)*lastPointR.y + decay*tPointR.y;
+				lastPointL.x = (1-decay)*lastPointL.x + decay*tPointL.x;
+				lastPointL.y = (1-decay)*lastPointL.y + decay*tPointL.y;
+				
+//				Log.i(TAG,"The lastpointR : "+lastPointR.x +" "+lastPointR.y);
+				Log.i(TAG,"The lastpointL : "+lastPointL.x +" "+lastPointL.y);
+				
+				if(lastGridR.x==lastGridL.x){
+					Log.i(TAG,"Both eyes set on column : "+lastGridL.x );
+				}
+				if(lastGridR.y==lastGridL.y){
+					Log.i(TAG,"Both eyes set on row : "+lastGridL.y );
+				}
 		}
 
 		return mRgba;
@@ -293,7 +303,7 @@ public class EyeIntention extends Activity implements CvCameraViewListener2 {
 		Point lastPoint;
 		
 		if(isLeft){
-			lastGrid=lastGridL;		
+			lastGrid=lastGridL;	
 			tPoint =tPointL;
 			lastPoint =lastPointL;
 		}else{
@@ -302,12 +312,14 @@ public class EyeIntention extends Activity implements CvCameraViewListener2 {
 			lastPoint =lastPointR;
 		}
 		
-		if(tPoint.x -lastPoint.x >xThresh){
+//		if(tPoint.x -lastPoint.x >xThresh){
+		if(tPoint.x -lastPoint.x < -xThresh){
 			lastGrid.x = lastGrid.x+1;
 			if(lastGrid.x>3){
 				lastGrid.x = 3;
 			}
-		}else if(tPoint.x - lastPoint.x > - xThresh){
+//		}else if(tPoint.x - lastPoint.x < - xThresh){
+		}else if(tPoint.x - lastPoint.x > xThresh){
 			lastGrid.x = lastGrid.x-1;
 			if(lastGrid.x<1){
 				lastGrid.x = 1;
@@ -353,8 +365,8 @@ public class EyeIntention extends Activity implements CvCameraViewListener2 {
 			
 			
 			Core.MinMaxLocResult mmG = Core.minMaxLoc(mROI);
-			Log.i(TAG,"White Circle =>Pupil");
-			
+			Log.d(TAG,"White Circle =>Pupil");
+				
 			Core.circle(vyrez, mmG.minLoc, 2, new Scalar(255, 255, 255, 255), 2);
 			
 			iris.x = mmG.minLoc.x + eye_rect.x;
@@ -363,16 +375,16 @@ public class EyeIntention extends Activity implements CvCameraViewListener2 {
 					- size / 2, size, size);
 			
 			if(isLeft){
-                Core.putText(mRgba, "[" + mmG.minLoc.x + "," + mmG.minLoc.y + "]",
-                                new Point(iris.x + 20, iris.y + 20),
-                                Core.FONT_HERSHEY_SIMPLEX, 0.7, new Scalar(255, 255, 255,
-                                                255));
-	        }else{
-	                Core.putText(mRgba, "[" + mmG.minLoc.x + "," + mmG.minLoc.y + "]",
-	                                new Point(iris.x - 20, iris.y + 20),
-	                                Core.FONT_HERSHEY_SIMPLEX, 0.7, new Scalar(255, 255, 255,
-	                                                255));                                
-	        }
+				Core.putText(mRgba, "[" + mmG.minLoc.x + "," + mmG.minLoc.y + "]",
+						new Point(iris.x + 20, iris.y + 20),
+						Core.FONT_HERSHEY_SIMPLEX, 0.7, new Scalar(255, 255, 255,
+								255));
+			}else{
+				Core.putText(mRgba, "[" + mmG.minLoc.x + "," + mmG.minLoc.y + "]",
+						new Point(iris.x - 20, iris.y + 20),
+						Core.FONT_HERSHEY_SIMPLEX, 0.7, new Scalar(255, 255, 255,
+								255));				
+			}
 			
 			if(isLeft){
 				tPointL = mmG.minLoc;				
@@ -380,10 +392,10 @@ public class EyeIntention extends Activity implements CvCameraViewListener2 {
 				tPointR = mmG.minLoc;
 			}
 			
-			Log.i(TAG, "mmG.minLoc = "+mmG.minLoc.x +" "+mmG.minLoc.y);
+//			Log.e(TAG, "mmG.minLoc = "+mmG.minLoc.x +" "+mmG.minLoc.y);
 			
 			
-			Log.i(TAG,"Red Rectangale =><Eye>");
+			Log.d(TAG,"Red Rectangale =><Eye>");
 			Core.rectangle(mRgba, eye_template.tl(), eye_template.br(),
 					new Scalar(255, 0, 0, 255), 2);
 			template = (mGray.submat(eye_template)).clone();
@@ -416,7 +428,7 @@ public class EyeIntention extends Activity implements CvCameraViewListener2 {
 
 		//matchLoc = mmres.minLoc;
 		matchLoc = mmres.maxLoc;
-		Log.i(TAG, "matLoc = "+matchLoc.x +" "+matchLoc.y);
+		Log.d(TAG, "matLoc = "+matchLoc.x +" "+matchLoc.y);
 		Point matchLoc_tx = new Point(matchLoc.x + area.x, matchLoc.y + area.y);
 		Point matchLoc_ty = new Point(matchLoc.x + mTemplate.cols() + area.x,
 				matchLoc.y + mTemplate.rows() + area.y);
